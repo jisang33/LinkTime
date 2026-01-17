@@ -5,7 +5,7 @@ import { auth } from '@/lib/auth'
 // DELETE: 특정 시간 블록 삭제
 export async function DELETE(
   request: NextRequest,
-  { params }: { params: { id: string } | Promise<{ id: string }> }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
     const session = await auth()
@@ -17,8 +17,8 @@ export async function DELETE(
       )
     }
 
-    const resolvedParams = await Promise.resolve(params)
-    const id = resolvedParams?.id
+    const { id } = await params
+
     if (!id) {
       return NextResponse.json(
         { error: 'Time block id is required' },
@@ -56,7 +56,7 @@ export async function DELETE(
 // PATCH: 시간 블록 수정
 export async function PATCH(
   request: NextRequest,
-  { params }: { params: { id: string } | Promise<{ id: string }> }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
     const session = await auth()
@@ -68,8 +68,8 @@ export async function PATCH(
       )
     }
 
-    const resolvedParams = await Promise.resolve(params)
-    const id = resolvedParams?.id
+    const { id } = await params
+
     if (!id) {
       return NextResponse.json(
         { error: 'Time block id is required' },

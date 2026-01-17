@@ -5,7 +5,7 @@ import { computeAvailability } from '@/lib/availability'
 
 export async function GET(
   request: NextRequest,
-  { params }: { params: { id: string } | Promise<{ id: string }> }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
     const session = await auth()
@@ -14,8 +14,8 @@ export async function GET(
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
-    const resolvedParams = await Promise.resolve(params)
-    const groupId = resolvedParams?.id
+    const { id: groupId } = await params
+
     if (!groupId) {
       return NextResponse.json({ error: 'Group id is required' }, { status: 400 })
     }
@@ -94,4 +94,3 @@ export async function GET(
     return NextResponse.json({ error: 'Failed to fetch availability' }, { status: 500 })
   }
 }
-

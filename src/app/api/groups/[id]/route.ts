@@ -5,7 +5,7 @@ import { prisma } from '@/lib/prisma'
 // GET: 그룹 상세 조회
 export async function GET(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
     const session = await auth()
@@ -14,9 +14,11 @@ export async function GET(
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
+    const { id } = await params
+
     const group = await prisma.group.findFirst({
       where: {
-        id: params.id,
+        id,
         members: { some: { userId: session.user.id } },
       },
       include: {
@@ -51,7 +53,7 @@ export async function GET(
 // DELETE: 그룹 삭제 (owner만)
 export async function DELETE(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
     const session = await auth()
@@ -60,8 +62,10 @@ export async function DELETE(
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
+    const { id } = await params
+
     const group = await prisma.group.findUnique({
-      where: { id: params.id },
+      where: { id },
     })
 
     if (!group) {
@@ -72,7 +76,7 @@ export async function DELETE(
       return NextResponse.json({ error: '삭제 권한이 없습니다' }, { status: 403 })
     }
 
-    await prisma.group.delete({ where: { id: params.id } })
+    await prisma.group.delete({ where: { id } })
 
     return NextResponse.json({ success: true })
   } catch (error) {
