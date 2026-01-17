@@ -3,6 +3,23 @@ import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { computeAvailability } from '@/lib/availability'
 
+type TimeBlockData = {
+  dayOfWeek: number
+  startTime: string
+  endTime: string
+}
+
+type UserWithTimeBlocks = {
+  id: string
+  name: string
+  timeBlocks: TimeBlockData[]
+}
+
+type GroupMemberWithUser = {
+  user: UserWithTimeBlocks | null
+  userId: string
+}
+
 export async function GET(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
@@ -64,25 +81,29 @@ export async function GET(
       return NextResponse.json({ error: 'Group not found' }, { status: 404 })
     }
 
-    const isMember = group.members.some(
-      (member: { user?: { id: string } | null; userId: string }) => member.user?.id === session.user.id || member.userId === session.user.id
+    const membersTyped = group.members as GroupMemberWithUser[]
+
+    const isMember = membersTyped.some(
+      (member) => member.user?.id === session.user.id || member.userId === session.user.id
     )
 
     if (!isMember && group.ownerId !== session.user.id) {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
     }
 
-    const memberSchedules = group.members.map((member: { user?: { id: string; name: string; timeBlocks: { dayOfWeek: number; startTime: string; endTime: string }[] } | null; userId: string }) => ({
+    const memberSchedules = membersTyped.map((member) => ({
       id: member.user?.id ?? member.userId,
       name: member.user?.name ?? '이름 없음',
       timeBlocks: member.user?.timeBlocks ?? [],
     }))
 
-    if (group.owner && !memberSchedules.some((member: { id: string }) => member.id === group.owner?.id)) {
+    const ownerTyped = group.owner as UserWithTimeBlocks | null
+
+    if (ownerTyped && !memberSchedules.some((member) => member.id === ownerTyped.id)) {
       memberSchedules.unshift({
-        id: group.owner.id,
-        name: group.owner.name ?? '이름 없음',
-        timeBlocks: group.owner.timeBlocks ?? [],
+        id: ownerTyped.id,
+        name: ownerTyped.name ?? '이름 없음',
+        timeBlocks: ownerTyped.timeBlocks ?? [],
       })
     }
 

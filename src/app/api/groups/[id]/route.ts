@@ -2,6 +2,12 @@ import { NextRequest, NextResponse } from 'next/server'
 import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 
+type GroupMemberWithUser = {
+  user: { id: string; name: string; email: string } | null
+  userId: string
+  role: string
+}
+
 // GET: 그룹 상세 조회
 export async function GET(
   request: NextRequest,
@@ -33,15 +39,17 @@ export async function GET(
       return NextResponse.json({ error: '그룹을 찾을 수 없습니다' }, { status: 404 })
     }
 
+    const memberList = (group.members as GroupMemberWithUser[]).map((member) => ({
+      id: member.user?.id ?? member.userId,
+      name: member.user?.name ?? '이름 없음',
+      role: member.role,
+    }))
+
     return NextResponse.json({
       id: group.id,
       name: group.name,
       inviteCode: group.inviteCode,
-      members: group.members.map((member: { user?: { id: string; name: string } | null; userId: string; role: string }) => ({
-        id: member.user?.id ?? member.userId,
-        name: member.user?.name ?? '이름 없음',
-        role: member.role,
-      })),
+      members: memberList,
       isOwner: group.ownerId === session.user.id,
     })
   } catch (error) {

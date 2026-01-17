@@ -3,6 +3,18 @@ import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { generateInviteCode } from '@/lib/utils'
 
+type MemberWithGroup = {
+  group: {
+    id: string
+    name: string
+    inviteCode: string
+    ownerId: string
+    createdAt: Date
+    _count: { members: number }
+  }
+  role: string
+}
+
 async function createUniqueInviteCode() {
   for (let i = 0; i < 5; i++) {
     const code = generateInviteCode()
@@ -38,7 +50,7 @@ export async function GET() {
       orderBy: { joinedAt: 'desc' },
     })
 
-    const groups = members.map((member: { group: { id: string; name: string; inviteCode: string; ownerId: string; createdAt: Date; _count: { members: number } }; role: string }) => ({
+    const groups = (members as MemberWithGroup[]).map((member) => ({
       id: member.group.id,
       name: member.group.name,
       inviteCode: member.group.inviteCode,
