@@ -65,20 +65,20 @@ export async function GET(
     }
 
     const isMember = group.members.some(
-      (member) => member.user?.id === session.user.id || member.userId === session.user.id
+      (member: { user?: { id: string } | null; userId: string }) => member.user?.id === session.user.id || member.userId === session.user.id
     )
 
     if (!isMember && group.ownerId !== session.user.id) {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
     }
 
-    const memberSchedules = group.members.map((member) => ({
+    const memberSchedules = group.members.map((member: { user?: { id: string; name: string; timeBlocks: { dayOfWeek: number; startTime: string; endTime: string }[] } | null; userId: string }) => ({
       id: member.user?.id ?? member.userId,
       name: member.user?.name ?? '이름 없음',
       timeBlocks: member.user?.timeBlocks ?? [],
     }))
 
-    if (group.owner && !memberSchedules.some((member) => member.id === group.owner?.id)) {
+    if (group.owner && !memberSchedules.some((member: { id: string }) => member.id === group.owner?.id)) {
       memberSchedules.unshift({
         id: group.owner.id,
         name: group.owner.name ?? '이름 없음',
