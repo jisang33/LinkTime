@@ -2,12 +2,13 @@ import { auth } from '@/lib/auth'
 import { redirect } from 'next/navigation'
 import GroupDetailClient from '@/components/groups/GroupDetailClient'
 
-export default async function GroupDetailPage({ params }: { params: { id: string } }) {
+export default async function GroupDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const session = await auth()
 
   if (!session?.user?.id) {
     redirect('/login')
   }
 
-  return <GroupDetailClient id={params.id} />
+  const { id } = await params
+  return <GroupDetailClient id={id} />
 }

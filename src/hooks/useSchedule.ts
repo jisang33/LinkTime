@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import { TimeBlock } from '@/types'
 import { TIME_SLOTS } from '@/lib/constants'
 
@@ -8,6 +8,7 @@ export function useSchedule() {
   const [timeBlocks, setTimeBlocks] = useState<TimeBlock[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  const pendingOps = useRef<Set<string>>(new Set())
 
   // 시간표 조회
   const fetchTimeBlocks = useCallback(async () => {
@@ -26,12 +27,25 @@ export function useSchedule() {
     }
   }, [])
 
-  // 시간 블록 추가
+  // 시간 블록 추가 (낙관적 업데이트)
   const addTimeBlock = useCallback(async (
     dayOfWeek: number,
     startTime: string,
     endTime: string
   ) => {
+    const tempId = `temp-${Date.now()}`
+    const tempBlock: TimeBlock = {
+      id: tempId,
+      userId: '',
+      dayOfWeek,
+      startTime,
+      endTime,
+      isRecurring: true,
+    }
+
+    // 낙관적으로 UI 업데이트
+    setTimeBlocks((prev) => [...prev, tempBlock])
+
     try {
       const res = await fetch('/api/schedule', {
         method: 'POST',
@@ -40,23 +54,35 @@ export function useSchedule() {
       })
       const data = await res.json().catch(() => ({}))
       if (!res.ok) {
+        // 실패 시 롤백
+        setTimeBlocks((prev) => prev.filter((b) => b.id !== tempId))
         setError(data.error ?? '시간 블록 추가에 실패했습니다')
         return null
       }
-      setTimeBlocks((prev) => [...prev, data.timeBlock])
+      // 성공 시 실제 ID로 교체
+      setTimeBlocks((prev) => prev.map((b) => (b.id === tempId ? data.timeBlock : b)))
       return data.timeBlock
     } catch (err) {
+      setTimeBlocks((prev) => prev.filter((b) => b.id !== tempId))
       setError('시간 블록 추가에 실패했습니다')
       console.error(err)
       return null
     }
   }, [])
 
-  // 시간 블록 수정
+  // 시간 블록 수정 (낙관적 업데이트)
   const updateTimeBlock = useCallback(async (
     id: string,
     updates: Partial<Pick<TimeBlock, 'dayOfWeek' | 'startTime' | 'endTime'>>
   ) => {
+    const original = timeBlocks.find((b) => b.id === id)
+    if (!original) return null
+
+    // 낙관적으로 UI 업데이트
+    setTimeBlocks((prev) => prev.map((block) =>
+      block.id === id ? { ...block, ...updates } : block
+    ))
+
     try {
       const res = await fetch(`/api/schedule/${id}`, {
         method: 'PATCH',
@@ -65,37 +91,61 @@ export function useSchedule() {
       })
       const data = await res.json().catch(() => ({}))
       if (!res.ok) {
+        // 실패 시 롤백
+        setTimeBlocks((prev) => prev.map((block) =>
+          block.id === id ? original : block
+        ))
         setError(data.error ?? '시간 블록 수정에 실패했습니다')
         return null
       }
-      setTimeBlocks((prev) => prev.map((block) => (block.id === id ? data.timeBlock : block)))
       return data.timeBlock as TimeBlock
     } catch (err) {
+      setTimeBlocks((prev) => prev.map((block) =>
+        block.id === id ? original : block
+      ))
       setError('시간 블록 수정에 실패했습니다')
       console.error(err)
       return null
     }
-  }, [])
+  }, [timeBlocks])
 
-  // 시간 블록 삭제
+  // 시간 블록 삭제 (낙관적 업데이트)
   const removeTimeBlock = useCallback(async (id: string) => {
+    if (id.startsWith('temp-')) return true
+    if (pendingOps.current.has(id)) return true
+
+    pendingOps.current.add(id)
+    const original = timeBlocks.find((b) => b.id === id)
+
+    // 낙관적으로 UI 업데이트
+    setTimeBlocks((prev) => prev.filter((block) => block.id !== id))
+
     try {
       const res = await fetch(`/api/schedule/${id}`, {
         method: 'DELETE',
       })
       const data = await res.json().catch(() => ({}))
       if (!res.ok) {
+        // 실패 시 롤백
+        if (original) {
+          setTimeBlocks((prev) => [...prev, original])
+        }
         setError(data.error ?? '시간 블록 삭제에 실패했습니다')
+        pendingOps.current.delete(id)
         return false
       }
-      setTimeBlocks((prev) => prev.filter((block) => block.id !== id))
+      pendingOps.current.delete(id)
       return true
     } catch (err) {
+      if (original) {
+        setTimeBlocks((prev) => [...prev, original])
+      }
       setError('시간 블록 삭제에 실패했습니다')
       console.error(err)
+      pendingOps.current.delete(id)
       return false
     }
-  }, [])
+  }, [timeBlocks])
 
   const getAdjacentTime = (time: string, offset: number) => {
     const index = TIME_SLOTS.indexOf(time)
@@ -103,7 +153,7 @@ export function useSchedule() {
     return TIME_SLOTS[index + offset] ?? null
   }
 
-  // 특정 셀(30분 단위)만 삭제
+  // 특정 셀(30분 단위)만 삭제 (낙관적 업데이트)
   const removeTimeSlot = useCallback(async (dayOfWeek: number, time: string) => {
     const block = timeBlocks.find((item) => {
       if (item.dayOfWeek !== dayOfWeek) return false
@@ -152,19 +202,25 @@ export function useSchedule() {
 
   // 모든 시간 블록 초기화
   const clearAllTimeBlocks = useCallback(async () => {
+    const original = [...timeBlocks]
+    setTimeBlocks([])
+
     try {
       const res = await fetch('/api/schedule', {
         method: 'DELETE',
       })
-      if (!res.ok) throw new Error('Failed to delete all')
-      setTimeBlocks([])
+      if (!res.ok) {
+        setTimeBlocks(original)
+        throw new Error('Failed to delete all')
+      }
       return true
     } catch (err) {
+      setTimeBlocks(original)
       setError('초기화에 실패했습니다')
       console.error(err)
       return false
     }
-  }, [])
+  }, [timeBlocks])
 
   // 특정 시간이 블록되어 있는지 확인
   const isTimeBlocked = useCallback((dayOfWeek: number, time: string) => {

@@ -7,10 +7,12 @@ import { cn } from '@/lib/utils'
 
 interface DragState {
   isDragging: boolean
+  isDeleteMode: boolean
   startDay: number | null
   startTimeIndex: number | null
   currentDay: number | null
   currentTimeIndex: number | null
+  deletedCells: Set<string>
 }
 
 export default function WeeklySchedule() {
@@ -25,12 +27,13 @@ export default function WeeklySchedule() {
 
   const [dragState, setDragState] = useState<DragState>({
     isDragging: false,
+    isDeleteMode: false,
     startDay: null,
     startTimeIndex: null,
     currentDay: null,
     currentTimeIndex: null,
+    deletedCells: new Set(),
   })
-  const [saving, setSaving] = useState(false)
   const gridRef = useRef<HTMLDivElement>(null)
 
   // 30분 뒤 시간 계산
@@ -44,23 +47,34 @@ export default function WeeklySchedule() {
   }
 
   // 드래그 시작
-  const handleMouseDown = async (dayIndex: number, timeIndex: number) => {
+  const handleMouseDown = (dayIndex: number, timeIndex: number) => {
     const time = DISPLAY_TIME_SLOTS[timeIndex]
     const blocked = isTimeBlocked(dayIndex, time)
 
-    // 이미 블록된 곳을 클릭하면 삭제
     if (blocked) {
-      await removeTimeSlot(dayIndex, time)
-      return
+      // 삭제 모드 시작
+      removeTimeSlot(dayIndex, time)
+      setDragState({
+        isDragging: true,
+        isDeleteMode: true,
+        startDay: dayIndex,
+        startTimeIndex: timeIndex,
+        currentDay: dayIndex,
+        currentTimeIndex: timeIndex,
+        deletedCells: new Set([`${dayIndex}-${timeIndex}`]),
+      })
+    } else {
+      // 추가 모드 시작
+      setDragState({
+        isDragging: true,
+        isDeleteMode: false,
+        startDay: dayIndex,
+        startTimeIndex: timeIndex,
+        currentDay: dayIndex,
+        currentTimeIndex: timeIndex,
+        deletedCells: new Set(),
+      })
     }
-
-    setDragState({
-      isDragging: true,
-      startDay: dayIndex,
-      startTimeIndex: timeIndex,
-      currentDay: dayIndex,
-      currentTimeIndex: timeIndex,
-    })
   }
 
   // 드래그 중
@@ -70,22 +84,61 @@ export default function WeeklySchedule() {
     // 같은 요일에서만 드래그 가능
     if (dayIndex !== dragState.startDay) return
 
-    setDragState((prev) => ({
-      ...prev,
-      currentDay: dayIndex,
-      currentTimeIndex: timeIndex,
-    }))
+    const time = DISPLAY_TIME_SLOTS[timeIndex]
+    const cellKey = `${dayIndex}-${timeIndex}`
+
+    if (dragState.isDeleteMode) {
+      // 삭제 모드: 블록된 셀만 삭제
+      const blocked = isTimeBlocked(dayIndex, time)
+      if (blocked && !dragState.deletedCells.has(cellKey)) {
+        removeTimeSlot(dayIndex, time)
+        setDragState((prev) => ({
+          ...prev,
+          currentDay: dayIndex,
+          currentTimeIndex: timeIndex,
+          deletedCells: new Set([...prev.deletedCells, cellKey]),
+        }))
+      }
+    } else {
+      // 추가 모드
+      setDragState((prev) => ({
+        ...prev,
+        currentDay: dayIndex,
+        currentTimeIndex: timeIndex,
+      }))
+    }
   }
 
   // 드래그 종료
   const handleMouseUp = useCallback(async () => {
-    if (!dragState.isDragging || dragState.startDay === null || dragState.startTimeIndex === null) {
+    if (!dragState.isDragging) {
+      return
+    }
+
+    // 삭제 모드면 이미 처리됨
+    if (dragState.isDeleteMode) {
       setDragState({
         isDragging: false,
+        isDeleteMode: false,
         startDay: null,
         startTimeIndex: null,
         currentDay: null,
         currentTimeIndex: null,
+        deletedCells: new Set(),
+      })
+      return
+    }
+
+    // 추가 모드
+    if (dragState.startDay === null || dragState.startTimeIndex === null) {
+      setDragState({
+        isDragging: false,
+        isDeleteMode: false,
+        startDay: null,
+        startTimeIndex: null,
+        currentDay: null,
+        currentTimeIndex: null,
+        deletedCells: new Set(),
       })
       return
     }
@@ -96,22 +149,23 @@ export default function WeeklySchedule() {
     const startTime = DISPLAY_TIME_SLOTS[startIdx]
     const endTime = getNextTimeSlot(DISPLAY_TIME_SLOTS[endIdx])
 
-    setSaving(true)
-    await addTimeBlock(dragState.startDay, startTime, endTime)
-    setSaving(false)
+    addTimeBlock(dragState.startDay, startTime, endTime)
 
     setDragState({
       isDragging: false,
+      isDeleteMode: false,
       startDay: null,
       startTimeIndex: null,
       currentDay: null,
       currentTimeIndex: null,
+      deletedCells: new Set(),
     })
   }, [dragState, addTimeBlock])
 
-  // 드래그 중인 범위에 포함되는지 확인
+  // 드래그 중인 범위에 포함되는지 확인 (추가 모드용)
   const isInDragRange = (dayIndex: number, timeIndex: number) => {
-    if (!dragState.isDragging || dragState.startDay !== dayIndex) return false
+    if (!dragState.isDragging || dragState.isDeleteMode) return false
+    if (dragState.startDay !== dayIndex) return false
     if (dragState.startTimeIndex === null || dragState.currentTimeIndex === null) return false
 
     const minIdx = Math.min(dragState.startTimeIndex, dragState.currentTimeIndex)
@@ -145,7 +199,7 @@ export default function WeeklySchedule() {
       {/* 헤더 버튼 */}
       <div className="flex items-center justify-between mb-4">
         <div className="text-sm text-gray-500">
-          드래그하여 불가능한 시간을 선택하세요. 클릭하면 삭제됩니다.
+          드래그하여 시간을 선택/삭제하세요.
         </div>
         <div className="flex gap-2">
           <button
@@ -200,8 +254,8 @@ export default function WeeklySchedule() {
                   <div
                     key={`${dayIndex}-${timeIndex}`}
                     className={cn(
-                      'h-8 border-r last:border-r-0 cursor-pointer transition-colors',
-                      blocked && 'bg-blue-500 hover:bg-blue-600',
+                      'h-8 border-r last:border-r-0 cursor-pointer transition-colors duration-75',
+                      blocked && 'bg-blue-500 hover:bg-blue-400',
                       !blocked && !inDragRange && 'hover:bg-gray-100',
                       inDragRange && !blocked && 'bg-blue-300'
                     )}
@@ -225,9 +279,6 @@ export default function WeeklySchedule() {
           <div className="w-4 h-4 bg-white border rounded" />
           <span>가능한 시간</span>
         </div>
-        {saving && (
-          <div className="text-blue-500 ml-auto">저장 중...</div>
-        )}
       </div>
     </div>
   )
