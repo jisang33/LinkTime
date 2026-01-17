@@ -1,0 +1,60 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = "file:./dev.db"
+}
+
+model User {
+  id        String   @id @default(cuid())
+  email     String   @unique
+  password  String
+  name      String
+  createdAt DateTime @default(now())
+
+  timeBlocks  TimeBlock[]
+  groups      GroupMember[]
+  ownedGroups Group[]
+}
+
+model Group {
+  id         String   @id @default(cuid())
+  name       String
+  inviteCode String   @unique
+  ownerId    String
+  createdAt  DateTime @default(now())
+
+  owner   User          @relation(fields: [ownerId], references: [id])
+  members GroupMember[]
+}
+
+model GroupMember {
+  id       String   @id @default(cuid())
+  groupId  String
+  userId   String
+  role     String   @default("member")
+  joinedAt DateTime @default(now())
+
+  group Group @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  user  User  @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([groupId, userId])
+}
+
+model TimeBlock {
+  id           String    @id @default(cuid())
+  userId       String
+  dayOfWeek    Int
+  startTime    String
+  endTime      String
+  isRecurring  Boolean   @default(true)
+  specificDate DateTime?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
