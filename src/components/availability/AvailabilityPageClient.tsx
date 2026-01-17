@@ -11,6 +11,7 @@ import RecommendedTimes from '@/components/availability/RecommendedTimes'
 interface AvailabilityResponse {
   totalMembers: number
   availability: DayAvailability[]
+  error?: string
 }
 
 const computeRecommendations = (
