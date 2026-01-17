@@ -38,7 +38,7 @@ export async function GET() {
       orderBy: { joinedAt: 'desc' },
     })
 
-    const groups = members.map((member) => ({
+    const groups = members.map((member: { group: { id: string; name: string; inviteCode: string; ownerId: string; createdAt: Date; _count: { members: number } }; role: string }) => ({
       id: member.group.id,
       name: member.group.name,
       inviteCode: member.group.inviteCode,

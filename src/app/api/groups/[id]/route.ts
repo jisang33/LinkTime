@@ -37,7 +37,7 @@ export async function GET(
       id: group.id,
       name: group.name,
       inviteCode: group.inviteCode,
-      members: group.members.map((member) => ({
+      members: group.members.map((member: { user?: { id: string; name: string } | null; userId: string; role: string }) => ({
         id: member.user?.id ?? member.userId,
         name: member.user?.name ?? '이름 없음',
         role: member.role,
